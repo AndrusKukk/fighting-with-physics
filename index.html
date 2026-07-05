@@ -135,6 +135,21 @@
       display: grid;
     }
 
+    .tutorial-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 4;
+      display: none;
+      place-items: center;
+      padding: 20px;
+      background: rgba(4, 7, 10, 0.58);
+      backdrop-filter: blur(4px);
+    }
+
+    .tutorial-overlay.is-visible {
+      display: grid;
+    }
+
     .level-complete {
       width: min(320px, calc(100vw - 40px));
       padding: 18px;
@@ -147,6 +162,54 @@
 
     .game-over-panel {
       width: min(340px, calc(100vw - 40px));
+    }
+
+    .tutorial-panel {
+      display: flex;
+      flex-direction: column;
+      width: min(460px, calc(100vw - 40px));
+      max-height: calc(100vh - 40px);
+      text-align: left;
+    }
+
+    .tutorial-panel strong {
+      margin-bottom: 10px;
+    }
+
+    .tutorial-grid {
+      display: grid;
+      gap: 10px;
+      min-height: 0;
+      overflow-y: auto;
+      margin: 0 0 16px;
+      padding-right: 4px;
+      scrollbar-color: rgba(255, 207, 90, 0.62) rgba(255, 255, 255, 0.08);
+    }
+
+    .tutorial-item {
+      display: grid;
+      grid-template-columns: 98px 1fr;
+      gap: 12px;
+      align-items: center;
+      padding: 11px 12px;
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .tutorial-item span {
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.1;
+      text-transform: uppercase;
+    }
+
+    .tutorial-item p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
     }
 
     .upgrade-shop {
@@ -493,6 +556,32 @@
     <button data-key="right">→</button>
   </div>
 
+  <div id="tutorialOverlay" class="tutorial-overlay" aria-hidden="true">
+    <div class="level-complete tutorial-panel" role="dialog" aria-modal="true" aria-labelledby="tutorialTitle">
+      <strong id="tutorialTitle">Pilot briefing</strong>
+      <p>Collect fuel and space junk, then land gently once every object is collected.</p>
+      <div class="tutorial-grid">
+        <div class="tutorial-item">
+          <span>Controls</span>
+          <p><kbd>W</kbd> or <kbd>↑</kbd> thrusts. <kbd>A</kbd>/<kbd>D</kbd> or <kbd>←</kbd>/<kbd>→</kbd> rotate. <kbd>R</kbd> retries.</p>
+        </div>
+        <div class="tutorial-item">
+          <span>Fuel</span>
+          <p>Thrust burns fuel. Floating fuel cans restore 20% and count toward the level goal.</p>
+        </div>
+        <div class="tutorial-item">
+          <span>Space junk</span>
+          <p>Collect space junk to earn 100 SC for upgrades between levels.</p>
+        </div>
+        <div class="tutorial-item">
+          <span>Landing</span>
+          <p>Touch down on the pad at or below the safe vertical speed, then stop thrusting to finish.</p>
+        </div>
+      </div>
+      <button id="closeTutorialButton" type="button">Start flying</button>
+    </div>
+  </div>
+
   <div id="levelOverlay" class="level-overlay" aria-hidden="true">
     <div id="levelCompletePanel" class="level-complete" role="dialog" aria-modal="true" aria-labelledby="levelCompleteTitle">
       <div class="trophy" aria-hidden="true">
@@ -588,6 +677,8 @@
     const livesEl = document.querySelector("#lives");
     const statusTitleEl = document.querySelector("#statusTitle");
     const statusTextEl = document.querySelector("#statusText");
+    const tutorialOverlayEl = document.querySelector("#tutorialOverlay");
+    const closeTutorialButton = document.querySelector("#closeTutorialButton");
     const levelOverlayEl = document.querySelector("#levelOverlay");
     const levelCompletePanelEl = document.querySelector("#levelCompletePanel");
     const upgradePanelEl = document.querySelector("#upgradePanel");
@@ -693,6 +784,18 @@
       levelCompletePanelEl.classList.remove("is-hidden");
       upgradePanelEl.classList.add("is-hidden");
       gameOverPanelEl.classList.add("is-hidden");
+    }
+
+    function showTutorial() {
+      tutorialOverlayEl.classList.add("is-visible");
+      tutorialOverlayEl.setAttribute("aria-hidden", "false");
+      closeTutorialButton.focus();
+    }
+
+    function hideTutorial() {
+      tutorialOverlayEl.classList.remove("is-visible");
+      tutorialOverlayEl.setAttribute("aria-hidden", "true");
+      canvas.focus();
     }
 
     function resetUpgrades() {
@@ -999,19 +1102,24 @@
       const { context, engine } = audio;
       const now = context.currentTime;
       const speed = Math.hypot(rocket.vx, rocket.vy);
-      const throttleWobble = Math.sin(performance.now() * 0.026) * 5;
-      const roughness = 0.5 + Math.random() * 0.5;
-      engine.rumble.frequency.setTargetAtTime(50 + throttleWobble + clamp(speed * 0.015, 0, 8), now, 0.04);
-      engine.pulse.frequency.setTargetAtTime(24 + throttleWobble * 0.4, now, 0.05);
-      engine.lowPass.frequency.setTargetAtTime(390 + roughness * 80 + clamp(speed * 0.35, 0, 170), now, 0.05);
-      engine.exhaustFilter.frequency.setTargetAtTime(690 + roughness * 220, now, 0.045);
+      const fuelTier = upgrades.fuelSaver.tier;
+      const thrustTier = upgrades.thrusters.tier;
+      const throttleWobble = Math.sin(performance.now() * (0.026 + thrustTier * 0.003)) * (5 + thrustTier);
+      const roughness = 0.5 + Math.random() * (0.5 - fuelTier * 0.08);
+      const cleanWhine = fuelTier * 42 + thrustTier * 18;
+      engine.rumble.frequency.setTargetAtTime(48 + thrustTier * 4 + throttleWobble + clamp(speed * 0.015, 0, 8), now, 0.04);
+      engine.pulse.frequency.setTargetAtTime(24 + thrustTier * 3 + throttleWobble * 0.4, now, 0.05);
+      engine.lowPass.frequency.setTargetAtTime(390 + cleanWhine + roughness * 80 + clamp(speed * 0.35, 0, 170), now, 0.05);
+      engine.exhaustFilter.frequency.setTargetAtTime(690 + fuelTier * 210 + thrustTier * 45 + roughness * 220, now, 0.045);
+      engine.crackleFilter.frequency.setTargetAtTime(1150 + fuelTier * 360 + thrustTier * 80, now, 0.05);
+      engine.crackleGain.gain.setTargetAtTime(1 - fuelTier * 0.16 + thrustTier * 0.04, now, 0.05);
 
       if (now >= engine.nextCrackleAt) {
-        const duration = 0.018 + Math.random() * 0.038;
+        const duration = 0.014 + Math.random() * (0.038 - fuelTier * 0.006);
         const crackle = createNoiseSource(context, duration);
         const burstGain = context.createGain();
         const burstPan = context.createStereoPanner ? context.createStereoPanner() : null;
-        const peak = 0.05 + Math.random() * 0.13;
+        const peak = 0.04 + Math.random() * (0.13 - fuelTier * 0.018) + thrustTier * 0.01;
 
         burstGain.gain.setValueAtTime(0.001, now);
         burstGain.gain.exponentialRampToValueAtTime(peak, now + 0.004);
@@ -1028,7 +1136,7 @@
         burstGain.connect(engine.crackleGain);
         crackle.start(now);
         crackle.stop(now + duration + 0.01);
-        engine.nextCrackleAt = now + 0.025 + Math.random() * 0.075;
+        engine.nextCrackleAt = now + 0.025 + Math.random() * (0.075 - fuelTier * 0.01);
       }
     }
 
@@ -1120,15 +1228,28 @@
 
       const count = canistersForLevel();
       const debrisCount = debrisForLevel();
+      const columns = count >= 20 ? 6 : (count >= 12 ? 5 : 4);
+      const rows = Math.ceil(count / columns);
+      const sideMargin = 72;
+      const usableLeft = bounds.left + sideMargin;
+      const usableRight = bounds.right - sideMargin;
+      const usableWidth = Math.max(1, usableRight - usableLeft);
+      const topY = bounds.top + 180;
+      const bottomY = groundY - 130;
+      const usableHeight = Math.max(1, bottomY - topY);
+
       for (let i = 0; i < count; i += 1) {
-        const band = Math.floor(i / 4);
-        const column = i % 4;
-        const side = column % 2 === 0 ? -1 : 1;
-        const xSpread = 105 + Math.floor(column / 2) * 150 + band * 34;
+        const row = Math.floor(i / columns);
+        const column = i % columns;
+        const rowProgress = rows <= 1 ? 0 : row / (rows - 1);
+        const slot = (column + 0.5) / columns;
+        const stagger = row % 2 === 0 ? 0 : 0.5 / columns;
+        const jitterX = (Math.random() - 0.5) * Math.min(42, usableWidth / columns * 0.26);
+        const jitterY = (Math.random() - 0.5) * 34;
         const type = i >= count - debrisCount ? "debris" : "fuel";
         cans.push({
-          x: clamp(world.launchX + side * xSpread, bounds.left + 70, bounds.right - 70),
-          y: groundY - 130 - band * 125 - Math.random() * 45,
+          x: clamp(usableLeft + ((slot + stagger) % 1) * usableWidth + jitterX, usableLeft, usableRight),
+          y: clamp(bottomY - rowProgress * usableHeight + jitterY, topY, bottomY),
           radius: 15,
           type,
           collected: false,
@@ -1188,25 +1309,106 @@
       return Math.max(min, Math.min(max, value));
     }
 
+    function engineVisualProfile() {
+      const tier = upgrades.fuelSaver.tier;
+      const profiles = [
+        {
+          smokeChance: 0.58,
+          spread: 0.92,
+          force: 0.82,
+          radius: 1.18,
+          life: 1.18,
+          gravity: 0.18,
+          drag: 0.992,
+          smokeColors: ["rgba(24, 28, 28, 0.76)", "rgba(48, 52, 50, 0.66)"],
+          flameColors: ["#9a2f24", "#ff5d2f"],
+          glowColor: "rgba(255, 93, 47, 0.34)",
+          stretch: 1
+        },
+        {
+          smokeChance: 0.24,
+          spread: 0.72,
+          force: 1,
+          radius: 1,
+          life: 1,
+          gravity: 0.45,
+          drag: 0.982,
+          smokeColors: ["rgba(70, 75, 72, 0.54)", "rgba(36, 42, 42, 0.58)"],
+          flameColors: ["#ffcf5a", "#ff5d2f"],
+          glowColor: "rgba(255, 138, 58, 0.45)",
+          stretch: 1.08
+        },
+        {
+          smokeChance: 0.12,
+          spread: 0.52,
+          force: 1.18,
+          radius: 0.82,
+          life: 1.12,
+          gravity: 0.35,
+          drag: 0.988,
+          smokeColors: ["rgba(214, 226, 214, 0.26)", "rgba(255, 246, 198, 0.34)"],
+          flameColors: ["#fff7d0", "#ffcf5a"],
+          glowColor: "rgba(255, 245, 195, 0.52)",
+          stretch: 1.34
+        },
+        {
+          smokeChance: 0.05,
+          spread: 0.34,
+          force: 1.38,
+          radius: 0.62,
+          life: 1.28,
+          gravity: 0.18,
+          drag: 0.992,
+          smokeColors: ["rgba(148, 229, 255, 0.2)", "rgba(73, 178, 255, 0.26)"],
+          flameColors: ["#e8fbff", "#66d9ff"],
+          glowColor: "rgba(98, 210, 255, 0.62)",
+          stretch: 1.8
+        }
+      ];
+
+      return profiles[clamp(tier, 0, profiles.length - 1)];
+    }
+
+    function engineShakeProfile() {
+      const tier = upgrades.thrusters.tier;
+      return {
+        amplitude: 0.58 + tier * 0.14,
+        frequency: 0.037 + tier * 0.006
+      };
+    }
+
     function createFlame(dt) {
       const nozzleX = rocket.x - Math.cos(rocket.angle) * 22;
       const nozzleY = rocket.y - Math.sin(rocket.angle) * 22;
-      const count = Math.ceil(11 * dt * 60);
+      const profile = engineVisualProfile();
+      const count = Math.ceil((10 + upgrades.thrusters.tier) * dt * 60);
 
       for (let i = 0; i < count; i += 1) {
-        const spread = (Math.random() - 0.5) * 0.72;
-        const force = 80 + Math.random() * 135;
+        const smoke = Math.random() < profile.smokeChance;
+        const spread = (Math.random() - 0.5) * profile.spread;
+        const force = (80 + Math.random() * 135) * profile.force;
+        const flameColor = profile.flameColors[Math.floor(Math.random() * profile.flameColors.length)];
+        const smokeColor = profile.smokeColors[Math.floor(Math.random() * profile.smokeColors.length)];
         particles.push({
           x: nozzleX,
           y: nozzleY,
           vx: -Math.cos(rocket.angle + spread) * force + rocket.vx * 0.2,
           vy: -Math.sin(rocket.angle + spread) * force + rocket.vy * 0.2,
-          radius: 2.2 + Math.random() * 5.2,
-          life: 0.22 + Math.random() * 0.28,
+          radius: smoke
+            ? (5.4 + Math.random() * 7.2) * profile.radius
+            : (2.2 + Math.random() * 5.2) * profile.radius,
+          life: smoke
+            ? (0.46 + Math.random() * 0.6) * profile.life
+            : (0.22 + Math.random() * 0.28) * profile.life,
           age: 0,
-          hot: Math.random() > 0.35,
-          gravityScale: 0.45,
-          drag: 1
+          color: smoke ? smokeColor : flameColor,
+          hot: !smoke && Math.random() > 0.35,
+          gravityScale: smoke ? -0.08 : profile.gravity,
+          drag: smoke ? profile.drag : 0.992,
+          glow: !smoke,
+          glowColor: profile.glowColor,
+          stretch: smoke ? 1 : profile.stretch,
+          rotation: rocket.angle + Math.PI / 2
         });
       }
     }
@@ -1365,7 +1567,8 @@
         createFlame(dt);
       }
 
-      const engineShakeTarget = firing ? (rocket.landed ? 1.8 : 1.25) : 0;
+      const shakeProfile = engineShakeProfile();
+      const engineShakeTarget = firing ? (rocket.landed ? 1.8 : 1.25) * shakeProfile.amplitude : 0;
       const engineShakeSpeed = firing ? 18 : 9;
       engineShake += (engineShakeTarget - engineShake) * Math.min(1, engineShakeSpeed * dt);
       updateEngineSound(firing);
@@ -1666,9 +1869,30 @@
           ctx.stroke();
           ctx.restore();
         } else {
+          if (p.stretch && p.stretch > 1.01) {
+            const angle = Math.atan2(p.vy, p.vx);
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(angle);
+            if (p.glow) {
+              ctx.globalAlpha = Math.max(0, t * 0.36);
+              ctx.fillStyle = p.glowColor || "rgba(255, 138, 58, 0.42)";
+              ctx.beginPath();
+              ctx.ellipse(0, 0, p.radius * p.stretch * 1.7 * t, p.radius * 0.72 * t, 0, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.globalAlpha = Math.max(0, t);
+              ctx.fillStyle = p.color || (p.hot ? "#ffcf5a" : "#ff7048");
+            }
+            ctx.beginPath();
+            ctx.ellipse(0, 0, p.radius * p.stretch * t, p.radius * 0.58 * t, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            continue;
+          }
+
           if (p.glow) {
             const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, Math.max(1, p.radius * t));
-            glow.addColorStop(0, "rgba(255, 244, 190, 0.95)");
+            glow.addColorStop(0, p.glowColor || "rgba(255, 244, 190, 0.95)");
             glow.addColorStop(0.35, p.color || "#ffcf5a");
             glow.addColorStop(1, "rgba(255, 93, 47, 0)");
             ctx.fillStyle = glow;
@@ -1954,7 +2178,7 @@
         ctx.translate((Math.random() - 0.5) * screenShake, (Math.random() - 0.5) * screenShake);
       }
       if (canShakeScene && engineShake > 0.02) {
-        const rumble = performance.now() * 0.055;
+        const rumble = performance.now() * engineShakeProfile().frequency;
         ctx.translate(Math.sin(rumble) * engineShake, Math.cos(rumble * 1.37) * engineShake);
       }
       applyWorldCamera();
@@ -1976,6 +2200,12 @@
 
     function setKey(event, pressed) {
       const key = event.key.toLowerCase();
+      if (tutorialOverlayEl.classList.contains("is-visible")) {
+        if (pressed && (key === "enter" || key === "escape" || key === " ")) hideTutorial();
+        event.preventDefault();
+        return;
+      }
+
       if (mission.gameOver) {
         if (pressed && (key === "enter" || key === "r")) restartGame();
         return;
@@ -2011,6 +2241,7 @@
     });
 
     restartGameButton.addEventListener("click", restartGame);
+    closeTutorialButton.addEventListener("click", hideTutorial);
 
     buyUpgradesButton.addEventListener("click", showUpgradePanel);
     backToCompleteButton.addEventListener("click", showLevelSummaryPanel);
@@ -2058,6 +2289,7 @@
 
     bindTouchControls();
     resize();
+    showTutorial();
     requestAnimationFrame(loop);
   </script>
 </body>
