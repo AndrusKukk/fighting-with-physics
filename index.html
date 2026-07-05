@@ -795,6 +795,7 @@
     function hideTutorial() {
       tutorialOverlayEl.classList.remove("is-visible");
       tutorialOverlayEl.setAttribute("aria-hidden", "true");
+      startAmbientMusic();
       canvas.focus();
     }
 
@@ -960,7 +961,8 @@
       audio = {
         context,
         master,
-        engine: null
+        engine: null,
+        music: null
       };
 
       return audio;
@@ -991,6 +993,236 @@
       }
 
       return curve;
+    }
+
+    function noteFrequency(note, octave) {
+      const notes = {
+        c: -9,
+        "c#": -8,
+        db: -8,
+        d: -7,
+        "d#": -6,
+        eb: -6,
+        e: -5,
+        f: -4,
+        "f#": -3,
+        gb: -3,
+        g: -2,
+        "g#": -1,
+        ab: -1,
+        a: 0,
+        "a#": 1,
+        bb: 1,
+        b: 2
+      };
+      return 440 * Math.pow(2, (notes[note] + (octave - 4) * 12) / 12);
+    }
+
+    function triggerTone(context, destination, frequency, time, duration, options = {}) {
+      const osc = context.createOscillator();
+      const gain = context.createGain();
+      const filter = context.createBiquadFilter();
+
+      osc.type = options.type || "sawtooth";
+      osc.frequency.setValueAtTime(frequency, time);
+      if (options.detune) osc.detune.setValueAtTime(options.detune, time);
+
+      filter.type = options.filterType || "lowpass";
+      filter.frequency.setValueAtTime(options.filterFrequency || 1400, time);
+      filter.Q.value = options.q || 1;
+
+      gain.gain.setValueAtTime(0.001, time);
+      gain.gain.exponentialRampToValueAtTime(options.peak || 0.08, time + (options.attack || 0.012));
+      gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(destination);
+      osc.start(time);
+      osc.stop(time + duration + 0.04);
+    }
+
+    function triggerKick(context, destination, time) {
+      const osc = context.createOscillator();
+      const gain = context.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(132, time);
+      osc.frequency.exponentialRampToValueAtTime(42, time + 0.2);
+      gain.gain.setValueAtTime(0.001, time);
+      gain.gain.exponentialRampToValueAtTime(0.72, time + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.28);
+
+      osc.connect(gain);
+      gain.connect(destination);
+      osc.start(time);
+      osc.stop(time + 0.3);
+    }
+
+    function triggerSnare(context, destination, time) {
+      const noise = createNoiseSource(context, 0.18);
+      const noiseGain = context.createGain();
+      const filter = context.createBiquadFilter();
+      const body = context.createOscillator();
+      const bodyGain = context.createGain();
+
+      filter.type = "bandpass";
+      filter.frequency.value = 1850;
+      filter.Q.value = 1.2;
+      noiseGain.gain.setValueAtTime(0.001, time);
+      noiseGain.gain.exponentialRampToValueAtTime(0.34, time + 0.006);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, time + 0.16);
+
+      body.type = "triangle";
+      body.frequency.setValueAtTime(184, time);
+      bodyGain.gain.setValueAtTime(0.001, time);
+      bodyGain.gain.exponentialRampToValueAtTime(0.09, time + 0.006);
+      bodyGain.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
+
+      noise.connect(filter);
+      filter.connect(noiseGain);
+      noiseGain.connect(destination);
+      body.connect(bodyGain);
+      bodyGain.connect(destination);
+      noise.start(time);
+      noise.stop(time + 0.18);
+      body.start(time);
+      body.stop(time + 0.14);
+    }
+
+    function triggerHat(context, destination, time, open = false) {
+      const noise = createNoiseSource(context, open ? 0.14 : 0.045);
+      const gain = context.createGain();
+      const filter = context.createBiquadFilter();
+
+      filter.type = "highpass";
+      filter.frequency.value = 6200;
+      filter.Q.value = 0.8;
+      gain.gain.setValueAtTime(0.001, time);
+      gain.gain.exponentialRampToValueAtTime(open ? 0.16 : 0.09, time + 0.004);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + (open ? 0.13 : 0.042));
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(destination);
+      noise.start(time);
+      noise.stop(time + (open ? 0.15 : 0.055));
+    }
+
+    function startAmbientMusic() {
+      const setup = ensureAudio();
+      if (!setup || setup.music) return;
+
+      const { context, master } = setup;
+      const musicGain = context.createGain();
+      const drumGain = context.createGain();
+      const melodyGain = context.createGain();
+      const padGain = context.createGain();
+      const padFilter = context.createBiquadFilter();
+      const padOscA = context.createOscillator();
+      const padOscB = context.createOscillator();
+      const padLfo = context.createOscillator();
+      const padLfoGain = context.createGain();
+      const tempo = 96;
+      const stepDuration = 60 / tempo / 2;
+      const chordRoots = [
+        ["a", 3],
+        ["f", 3],
+        ["c", 4],
+        ["g", 3]
+      ];
+
+      musicGain.gain.value = 0.34;
+      drumGain.gain.value = 1.15;
+      melodyGain.gain.value = 0.34;
+      padGain.gain.value = 0.09;
+      padFilter.type = "lowpass";
+      padFilter.frequency.value = 880;
+      padFilter.Q.value = 1.8;
+
+      padOscA.type = "sawtooth";
+      padOscB.type = "triangle";
+      padOscA.frequency.value = noteFrequency("a", 3);
+      padOscB.frequency.value = noteFrequency("e", 4);
+      padOscB.detune.value = 7;
+      padLfo.type = "sine";
+      padLfo.frequency.value = 0.08;
+      padLfoGain.gain.value = 220;
+      padLfo.connect(padLfoGain);
+      padLfoGain.connect(padFilter.frequency);
+
+      drumGain.connect(musicGain);
+      melodyGain.connect(musicGain);
+      padOscA.connect(padFilter);
+      padOscB.connect(padFilter);
+      padFilter.connect(padGain);
+      padGain.connect(musicGain);
+      musicGain.connect(master);
+
+      const now = context.currentTime;
+      padGain.gain.setValueAtTime(0.001, now);
+      padGain.gain.exponentialRampToValueAtTime(0.09, now + 1.2);
+      padOscA.start(now);
+      padOscB.start(now);
+      padLfo.start(now);
+
+      const music = {
+        gain: musicGain,
+        drumGain,
+        melodyGain,
+        padGain,
+        padFilter,
+        padOscA,
+        padOscB,
+        padLfo,
+        nextStep: 0,
+        nextTime: context.currentTime + 0.08,
+        timer: null
+      };
+
+      const schedule = () => {
+        const lookAhead = context.currentTime + 0.5;
+        while (music.nextTime < lookAhead) {
+          const step = music.nextStep % 32;
+          const beat = step % 8;
+          const bar = Math.floor(step / 8);
+          const root = chordRoots[bar % chordRoots.length];
+          const rootFrequency = noteFrequency(root[0], root[1]);
+          const time = music.nextTime;
+
+          if (beat % 2 === 0) triggerKick(context, drumGain, time);
+          if (beat === 2 || beat === 6) triggerSnare(context, drumGain, time);
+          triggerHat(context, drumGain, time, beat === 7);
+
+          if (beat === 0) {
+            padOscA.frequency.setTargetAtTime(rootFrequency, time, 0.08);
+            padOscB.frequency.setTargetAtTime(rootFrequency * 1.5, time, 0.08);
+            triggerTone(context, melodyGain, rootFrequency / 2, time, stepDuration * 1.8, {
+              type: "sawtooth",
+              filterFrequency: 520,
+              peak: 0.1,
+              attack: 0.018
+            });
+          }
+
+          if (beat === 3 || beat === 7) {
+            triggerTone(context, melodyGain, rootFrequency * (beat === 3 ? 2 : 2.25), time, stepDuration * 0.7, {
+              type: "square",
+              filterFrequency: 2200,
+              peak: 0.035,
+              attack: 0.008,
+              detune: beat === 7 ? 5 : -4
+            });
+          }
+
+          music.nextStep += 1;
+          music.nextTime += stepDuration;
+        }
+      };
+
+      schedule();
+      music.timer = setInterval(schedule, 120);
+      setup.music = music;
     }
 
     function startEngineSound() {
@@ -2218,7 +2450,7 @@
         return;
       }
       if (key === "w" || key === "arrowup" || key === " ") {
-        if (pressed) ensureAudio();
+        if (pressed) startAmbientMusic();
         keys.thrust = pressed;
         event.preventDefault();
       }
@@ -2265,7 +2497,7 @@
         const key = button.dataset.key;
         const press = (event) => {
           event.preventDefault();
-          ensureAudio();
+          startAmbientMusic();
           keys[key] = true;
           button.setPointerCapture(event.pointerId);
         };
