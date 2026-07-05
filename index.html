@@ -4,6 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fighting With Physics</title>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-VBGZSRQM4E"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag("js", new Date());
+    gtag("config", "G-VBGZSRQM4E");
+  </script>
   <style>
     :root {
       color-scheme: dark;
@@ -703,6 +710,7 @@
       groundHeight: 88,
       platformTopOffset: 17,
       rocketBottomOffset: 27,
+      landingPadHalfWidth: 58,
       viewScale: 0.72,
       launchX: 0,
       launchY: 0
@@ -1134,8 +1142,8 @@
 
       musicGain.gain.value = 0.34;
       drumGain.gain.value = 1.15;
-      melodyGain.gain.value = 0.34;
-      padGain.gain.value = 0.09;
+      melodyGain.gain.value = 0.84;
+      padGain.gain.value = 0.29;
       padFilter.type = "lowpass";
       padFilter.frequency.value = 880;
       padFilter.Q.value = 1.8;
@@ -1438,6 +1446,10 @@
 
     function restingRocketY() {
       return launchSurfaceY() - world.rocketBottomOffset;
+    }
+
+    function isRocketOverLandingPad() {
+      return Math.abs(rocket.x - world.launchX) <= world.landingPadHalfWidth;
     }
 
     function visibleWorldBounds() {
@@ -1868,15 +1880,22 @@
 
       if (rocket.y >= groundY) {
         const impactSpeed = Math.hypot(rocket.vx, rocket.vy);
+        const overLandingPad = isRocketOverLandingPad();
         rocket.y = groundY;
 
         if (rocket.crashed) {
           statusTitleEl.textContent = "Rocket lost";
           statusTextEl.textContent = `${mission.lives} ${mission.lives === 1 ? "life" : "lives"} remaining. Press R to retry this level.`;
-        } else if (!rocket.landed && impactSpeed > world.safeLandingSpeed) {
+        } else if (!rocket.landed && (!overLandingPad || impactSpeed > world.safeLandingSpeed)) {
           rocket.crashed = true;
           createExplosion(impactSpeed);
           loseLife();
+          if (!overLandingPad) {
+            statusTitleEl.textContent = "Missed the pad";
+            statusTextEl.textContent = mission.lives > 0
+              ? "Only the launch pad is safe for landing. Press R to retry this level."
+              : "Only the launch pad is safe for landing.";
+          }
         } else {
           rocket.crashed = false;
           if (rocket.maxAltitude > 4) {
@@ -2027,16 +2046,116 @@
     function drawLaunchPad() {
       const padY = height - world.groundHeight;
       const padTopY = launchSurfaceY();
-      ctx.fillStyle = "#1f2424";
-      ctx.fillRect(world.launchX - 70, padY - 8, 140, 10);
-      ctx.fillStyle = "#3d4946";
-      ctx.fillRect(world.launchX - 58, padY - 15, 116, 8);
-      ctx.strokeStyle = "rgba(255, 207, 90, 0.45)";
+      const padLeft = world.launchX - 78;
+      const padRight = world.launchX + 78;
+      const towerX = world.launchX + 78;
+      const towerTop = padTopY - 96;
+      const towerWidth = 28;
+      const lightPulse = Math.sin(performance.now() * 0.008) > 0 ? 1 : 0.32;
+
+      ctx.save();
+
+      ctx.strokeStyle = "rgba(87, 105, 105, 0.86)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(towerX - towerWidth * 0.5, padY);
+      ctx.lineTo(towerX - towerWidth * 0.5, towerTop);
+      ctx.moveTo(towerX + towerWidth * 0.5, padY);
+      ctx.lineTo(towerX + towerWidth * 0.5, towerTop);
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(166, 184, 178, 0.64)";
+      ctx.lineWidth = 1.6;
+      for (let y = padY - 12; y > towerTop + 4; y -= 22) {
+        ctx.beginPath();
+        ctx.moveTo(towerX - towerWidth * 0.5, y);
+        ctx.lineTo(towerX + towerWidth * 0.5, y - 11);
+        ctx.moveTo(towerX + towerWidth * 0.5, y);
+        ctx.lineTo(towerX - towerWidth * 0.5, y - 11);
+        ctx.moveTo(towerX - towerWidth * 0.5, y);
+        ctx.lineTo(towerX + towerWidth * 0.5, y);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "#182224";
+      ctx.strokeStyle = "#657676";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(towerX - 19, towerTop - 5, 38, 10, 3);
+      ctx.fill();
+      ctx.stroke();
+
+      const bridgeY = padTopY - 56;
+      const bridgeLeft = world.launchX + 18;
+      const bridgeRight = towerX - towerWidth * 0.5 + 2;
+      ctx.fillStyle = "rgba(33, 47, 49, 0.96)";
+      ctx.strokeStyle = "rgba(142, 166, 161, 0.86)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.roundRect(bridgeLeft, bridgeY - 4, bridgeRight - bridgeLeft, 8, 3);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(13, 19, 21, 0.62)";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(world.launchX - 58, padTopY);
-      ctx.lineTo(world.launchX + 58, padTopY);
+      ctx.moveTo(bridgeLeft + 3, bridgeY + 5);
+      ctx.lineTo(bridgeRight - 3, bridgeY + 5);
       ctx.stroke();
+
+      ctx.fillStyle = "rgba(18, 27, 29, 0.96)";
+      ctx.beginPath();
+      ctx.roundRect(padLeft - 12, padY - 14, padRight - padLeft + 24, 14, 4);
+      ctx.fill();
+
+      const deckGradient = ctx.createLinearGradient(0, padTopY - 16, 0, padY);
+      deckGradient.addColorStop(0, "#6f7f7a");
+      deckGradient.addColorStop(0.45, "#334041");
+      deckGradient.addColorStop(1, "#151f22");
+      ctx.fillStyle = deckGradient;
+      ctx.strokeStyle = "#0d1315";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(padLeft, padTopY - 10, padRight - padLeft, 18, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(255, 207, 90, 0.55)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(world.launchX - world.landingPadHalfWidth, padTopY);
+      ctx.lineTo(world.launchX + world.landingPadHalfWidth, padTopY);
+      ctx.stroke();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(padLeft + 7, padY - 10, padRight - padLeft - 14, 6);
+      ctx.clip();
+      for (let x = padLeft + 8; x < padRight - 8; x += 18) {
+        ctx.fillStyle = "#ffcf5a";
+        ctx.beginPath();
+        ctx.moveTo(x, padY - 10);
+        ctx.lineTo(x + 10, padY - 10);
+        ctx.lineTo(x + 2, padY - 4);
+        ctx.lineTo(x - 8, padY - 4);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+
+      ctx.fillStyle = `rgba(126, 214, 232, ${0.32 + lightPulse * 0.5})`;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(world.launchX + side * 64, padTopY - 4, 2.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.globalAlpha = lightPulse * 0.35;
+        ctx.beginPath();
+        ctx.arc(world.launchX + side * 64, padTopY - 4, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      ctx.restore();
     }
 
     function drawParticles() {
@@ -2375,28 +2494,6 @@
       ctx.restore();
     }
 
-    function drawVelocityVector() {
-      const speed = Math.hypot(rocket.vx, rocket.vy);
-      if (speed < 8) return;
-
-      const scale = clamp(speed * 0.24, 18, 70);
-      const angle = Math.atan2(rocket.vy, rocket.vx);
-      const x2 = rocket.x + Math.cos(angle) * scale;
-      const y2 = rocket.y + Math.sin(angle) * scale;
-
-      ctx.strokeStyle = "rgba(126, 214, 232, 0.72)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(rocket.x, rocket.y);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-
-      ctx.fillStyle = "rgba(126, 214, 232, 0.72)";
-      ctx.beginPath();
-      ctx.arc(x2, y2, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
     function applyWorldCamera() {
       ctx.translate(width * 0.5, height);
       ctx.scale(world.viewScale, world.viewScale);
@@ -2417,7 +2514,6 @@
       drawBackdrop();
       drawParticles();
       drawCans();
-      drawVelocityVector();
       drawRocket();
       ctx.restore();
     }
