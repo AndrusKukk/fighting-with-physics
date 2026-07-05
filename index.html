@@ -1,0 +1,2064 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fighting With Physics</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel: rgba(10, 14, 18, 0.72);
+      --panel-border: rgba(255, 255, 255, 0.14);
+      --text: #f2f7f4;
+      --muted: #9fb1a8;
+      --accent: #ffcf5a;
+      --danger: #ff6b5c;
+      --ok: #64d58b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #0b1114;
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none;
+    }
+
+    .hud {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      display: grid;
+      grid-template-columns: repeat(7, minmax(74px, 1fr));
+      gap: 8px;
+      width: min(590px, calc(100vw - 28px));
+      pointer-events: none;
+    }
+
+    .metric,
+    .status,
+    .controls,
+    .level-complete {
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.24);
+    }
+
+    .metric {
+      min-height: 58px;
+      padding: 9px 10px;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.1;
+      text-transform: uppercase;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 18px;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .lives {
+      display: flex;
+      gap: 2px;
+      align-items: center;
+      min-height: 32px;
+      margin-top: 1px;
+    }
+
+    .life-rocket {
+      display: block;
+      width: 20px;
+      height: 32px;
+      flex: 0 0 20px;
+    }
+
+    .status {
+      position: fixed;
+      right: 14px;
+      top: 14px;
+      width: min(310px, calc(100vw - 28px));
+      padding: 12px;
+      pointer-events: none;
+    }
+
+    .status strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 15px;
+    }
+
+    .status p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .level-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      padding: 20px;
+      background: rgba(4, 7, 10, 0.36);
+      backdrop-filter: blur(3px);
+    }
+
+    .level-overlay.is-visible {
+      display: grid;
+    }
+
+    .level-complete {
+      width: min(320px, calc(100vw - 40px));
+      padding: 18px;
+      text-align: center;
+    }
+
+    .level-complete.is-hidden {
+      display: none;
+    }
+
+    .game-over-panel {
+      width: min(340px, calc(100vw - 40px));
+    }
+
+    .upgrade-shop {
+      width: min(460px, calc(100vw - 40px));
+      text-align: left;
+    }
+
+    .trophy {
+      position: relative;
+      width: 74px;
+      height: 78px;
+      margin: 0 auto 12px;
+    }
+
+    .trophy::before,
+    .trophy::after {
+      position: absolute;
+      top: 14px;
+      width: 28px;
+      height: 30px;
+      border: 5px solid #d89a24;
+      border-radius: 50%;
+      content: "";
+    }
+
+    .trophy::before {
+      left: 0;
+    }
+
+    .trophy::after {
+      right: 0;
+    }
+
+    .trophy-cup {
+      position: absolute;
+      left: 50%;
+      top: 5px;
+      width: 44px;
+      height: 44px;
+      border-radius: 8px 8px 18px 18px;
+      background: linear-gradient(135deg, #fff1a8 0%, #ffcf5a 34%, #d99624 68%, #8f5c12 100%);
+      box-shadow: inset 9px 0 11px rgba(255, 255, 255, 0.32), inset -7px -6px 12px rgba(72, 40, 5, 0.22);
+      transform: translateX(-50%);
+    }
+
+    .trophy-cup::before {
+      position: absolute;
+      left: 14px;
+      bottom: -16px;
+      width: 16px;
+      height: 18px;
+      background: #d99624;
+      content: "";
+    }
+
+    .trophy-cup::after {
+      position: absolute;
+      left: 7px;
+      bottom: -26px;
+      width: 30px;
+      height: 10px;
+      border-radius: 5px 5px 2px 2px;
+      background: #b97719;
+      content: "";
+    }
+
+    .trophy-base {
+      position: absolute;
+      left: 15px;
+      bottom: 0;
+      width: 44px;
+      height: 10px;
+      border-radius: 3px;
+      background: #5f3a13;
+    }
+
+    .level-complete strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 22px;
+      line-height: 1.1;
+    }
+
+    .level-complete p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    .level-stats {
+      display: grid;
+      gap: 8px;
+      margin: 0 0 16px;
+    }
+
+    .level-stat {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 54px;
+      padding: 10px 12px;
+      border: 1px solid rgba(255, 207, 90, 0.36);
+      border-radius: 8px;
+      background: rgba(255, 207, 90, 0.1);
+      text-align: left;
+    }
+
+    .level-stat span {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .level-stat strong {
+      margin: 0;
+      color: var(--accent);
+      font-size: 24px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .dialog-actions {
+      display: grid;
+      gap: 8px;
+    }
+
+    .level-complete button {
+      min-height: 42px;
+      width: 100%;
+      border: 1px solid rgba(255, 207, 90, 0.6);
+      border-radius: 8px;
+      background: var(--accent);
+      color: #1c1708;
+      font: 800 14px/1 ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .level-complete button.secondary {
+      border-color: rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+    }
+
+    .level-complete button:disabled {
+      border-color: rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(242, 247, 244, 0.38);
+      cursor: not-allowed;
+    }
+
+    .level-complete button:focus-visible {
+      outline: 3px solid rgba(126, 214, 232, 0.65);
+      outline-offset: 3px;
+    }
+
+    .upgrade-list {
+      display: grid;
+      gap: 10px;
+      max-height: min(360px, calc(100vh - 330px));
+      margin: 0 0 16px;
+      overflow-y: auto;
+      padding-right: 4px;
+      scrollbar-color: rgba(255, 207, 90, 0.62) rgba(255, 255, 255, 0.08);
+    }
+
+    .upgrade-card {
+      display: grid;
+      grid-template-columns: 1fr 112px;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .upgrade-card strong {
+      margin: 0 0 5px;
+      font-size: 15px;
+      line-height: 1.1;
+    }
+
+    .upgrade-card p {
+      margin: 0;
+      font-size: 12px;
+    }
+
+    .upgrade-cost {
+      display: block;
+      margin-top: 7px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .upgrade-tier {
+      display: inline-block;
+      margin-bottom: 6px;
+      color: var(--ok);
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .controls {
+      position: fixed;
+      left: 14px;
+      bottom: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      max-width: calc(100vw - 28px);
+      padding: 8px;
+      pointer-events: none;
+    }
+
+    kbd {
+      display: inline-grid;
+      min-width: 32px;
+      height: 28px;
+      place-items: center;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-bottom-color: rgba(255, 255, 255, 0.34);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .touch-controls {
+      position: fixed;
+      right: 14px;
+      bottom: 14px;
+      display: none;
+      grid-template-columns: repeat(3, 58px);
+      gap: 10px;
+      user-select: none;
+    }
+
+    .touch-controls button {
+      width: 58px;
+      height: 58px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: rgba(10, 14, 18, 0.68);
+      color: var(--text);
+      font-size: 24px;
+      font-weight: 800;
+      backdrop-filter: blur(12px);
+    }
+
+    .touch-controls .thrust {
+      color: var(--accent);
+    }
+
+    @media (pointer: coarse) {
+      .controls {
+        display: none;
+      }
+
+      .touch-controls {
+        display: grid;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .hud {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .metric {
+        min-height: 54px;
+        padding: 8px;
+      }
+
+      .metric strong {
+        font-size: 15px;
+      }
+
+      .status {
+        top: auto;
+        right: 14px;
+        bottom: 92px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Space rocket simulator game"></canvas>
+
+  <div class="hud" aria-hidden="true">
+    <div class="metric">
+      <span>Altitude</span>
+      <strong id="altitude">0 m</strong>
+    </div>
+    <div class="metric">
+      <span>Vertical speed</span>
+      <strong id="verticalSpeed">0 m/s</strong>
+    </div>
+    <div class="metric">
+      <span>Fuel</span>
+      <strong id="fuel">100%</strong>
+    </div>
+    <div class="metric">
+      <span>Level</span>
+      <strong id="level">1</strong>
+    </div>
+    <div class="metric">
+      <span>Collected</span>
+      <strong id="carried">0/2</strong>
+    </div>
+    <div class="metric">
+      <span>Money</span>
+      <strong id="money">0 SC</strong>
+    </div>
+    <div class="metric">
+      <span>Lives</span>
+      <div id="lives" class="lives" aria-label="Lives remaining"></div>
+    </div>
+  </div>
+
+  <div class="status" aria-live="polite">
+    <strong id="statusTitle">Ready on the pad</strong>
+    <p id="statusText">Hold thrust to lift off. Stop thrusting and gravity will slow the climb, then pull the rocket back down.</p>
+  </div>
+
+  <div class="controls" aria-hidden="true">
+    <kbd>W</kbd>
+    <kbd>↑</kbd>
+    <kbd>←</kbd>
+    <kbd>→</kbd>
+    <kbd>R</kbd>
+  </div>
+
+  <div class="touch-controls" aria-hidden="true">
+    <button data-key="left">←</button>
+    <button class="thrust" data-key="thrust">↑</button>
+    <button data-key="right">→</button>
+  </div>
+
+  <div id="levelOverlay" class="level-overlay" aria-hidden="true">
+    <div id="levelCompletePanel" class="level-complete" role="dialog" aria-modal="true" aria-labelledby="levelCompleteTitle">
+      <div class="trophy" aria-hidden="true">
+        <div class="trophy-cup"></div>
+        <div class="trophy-base"></div>
+      </div>
+      <strong id="levelCompleteTitle">Level complete</strong>
+      <p id="levelCompleteText">All objects collected. Ready for the next level?</p>
+      <div class="level-stats" aria-label="Level summary">
+        <div class="level-stat">
+          <span>Total money</span>
+          <strong id="levelCompleteMoney">0 SC</strong>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button id="buyUpgradesButton" class="secondary" type="button">Buy upgrades</button>
+        <button id="nextLevelButton" type="button">Start next level</button>
+      </div>
+    </div>
+
+    <div id="upgradePanel" class="level-complete upgrade-shop is-hidden" role="dialog" aria-modal="true" aria-labelledby="upgradeTitle">
+      <strong id="upgradeTitle">Ship upgrades</strong>
+      <p>Buy upgrades with space currency. Purchased upgrades apply on the next level.</p>
+      <div class="level-stats" aria-label="Upgrade shop summary">
+        <div class="level-stat">
+          <span>Available money</span>
+          <strong id="shopMoney">0 SC</strong>
+        </div>
+      </div>
+      <div class="upgrade-list" aria-label="Available upgrades">
+        <div class="upgrade-card">
+          <div>
+            <strong>Fuel saver</strong>
+            <span class="upgrade-tier"></span>
+            <p></p>
+            <span class="upgrade-cost"></span>
+          </div>
+          <button type="button" data-upgrade="fuelSaver">Buy</button>
+        </div>
+        <div class="upgrade-card">
+          <div>
+            <strong>Stronger thrusters</strong>
+            <span class="upgrade-tier"></span>
+            <p></p>
+            <span class="upgrade-cost"></span>
+          </div>
+          <button type="button" data-upgrade="thrusters">Buy</button>
+        </div>
+        <div class="upgrade-card">
+          <div>
+            <strong>Faster steering</strong>
+            <span class="upgrade-tier"></span>
+            <p></p>
+            <span class="upgrade-cost"></span>
+          </div>
+          <button type="button" data-upgrade="steering">Buy</button>
+        </div>
+        <div class="upgrade-card">
+          <div>
+            <strong>Landing gear</strong>
+            <span class="upgrade-tier"></span>
+            <p></p>
+            <span class="upgrade-cost"></span>
+          </div>
+          <button type="button" data-upgrade="landingGear">Buy</button>
+        </div>
+      </div>
+      <button id="backToCompleteButton" class="secondary" type="button">Back</button>
+    </div>
+
+    <div id="gameOverPanel" class="level-complete game-over-panel is-hidden" role="dialog" aria-modal="true" aria-labelledby="gameOverTitle">
+      <strong id="gameOverTitle">Game over</strong>
+      <p id="gameOverText">All rockets were lost. Start again from level 1.</p>
+      <div class="level-stats" aria-label="Game over summary">
+        <div class="level-stat">
+          <span>Money collected</span>
+          <strong id="gameOverMoney">0 SC</strong>
+        </div>
+      </div>
+      <button id="restartGameButton" type="button">Restart game</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.querySelector("#game");
+    const ctx = canvas.getContext("2d");
+    const altitudeEl = document.querySelector("#altitude");
+    const verticalSpeedEl = document.querySelector("#verticalSpeed");
+    const fuelEl = document.querySelector("#fuel");
+    const levelEl = document.querySelector("#level");
+    const carriedEl = document.querySelector("#carried");
+    const moneyEl = document.querySelector("#money");
+    const livesEl = document.querySelector("#lives");
+    const statusTitleEl = document.querySelector("#statusTitle");
+    const statusTextEl = document.querySelector("#statusText");
+    const levelOverlayEl = document.querySelector("#levelOverlay");
+    const levelCompletePanelEl = document.querySelector("#levelCompletePanel");
+    const upgradePanelEl = document.querySelector("#upgradePanel");
+    const gameOverPanelEl = document.querySelector("#gameOverPanel");
+    const levelCompleteTextEl = document.querySelector("#levelCompleteText");
+    const levelCompleteMoneyEl = document.querySelector("#levelCompleteMoney");
+    const gameOverMoneyEl = document.querySelector("#gameOverMoney");
+    const shopMoneyEl = document.querySelector("#shopMoney");
+    const buyUpgradesButton = document.querySelector("#buyUpgradesButton");
+    const backToCompleteButton = document.querySelector("#backToCompleteButton");
+    const nextLevelButton = document.querySelector("#nextLevelButton");
+    const restartGameButton = document.querySelector("#restartGameButton");
+    const upgradeButtons = Array.from(document.querySelectorAll("[data-upgrade]"));
+
+    const world = {
+      gravity: 145,
+      thrust: 292,
+      fuelBurn: 10.5,
+      turnRate: 3.4,
+      safeLandingSpeed: 82,
+      drag: 0.997,
+      groundHeight: 88,
+      platformTopOffset: 17,
+      rocketBottomOffset: 27,
+      viewScale: 0.72,
+      launchX: 0,
+      launchY: 0
+    };
+
+    const keys = {
+      thrust: false,
+      left: false,
+      right: false
+    };
+
+    const particles = [];
+    const stars = [];
+    const mountains = [];
+    const cans = [];
+    const maxLives = 3;
+    const fuelCanisterValue = 20;
+    const debrisValue = 100;
+    const baseRocketStats = {
+      thrust: world.thrust,
+      fuelBurn: world.fuelBurn,
+      turnRate: world.turnRate,
+      safeLandingSpeed: world.safeLandingSpeed
+    };
+    const upgrades = {
+      fuelSaver: {
+        tier: 0,
+        costs: [200, 400, 700],
+        describe: (tier) => `Fuel burns ${tier * 15}% slower.`
+      },
+      thrusters: {
+        tier: 0,
+        costs: [300, 600, 900],
+        describe: (tier) => `Engine thrust increases by ${tier * 10}%.`
+      },
+      steering: {
+        tier: 0,
+        costs: [150, 300, 550],
+        describe: (tier) => `Rotation speed increases by ${tier * 12}%.`
+      },
+      landingGear: {
+        tier: 0,
+        costs: [250, 500, 800],
+        describe: (tier) => `Safe landing speed increases by ${tier * 15}%.`
+      }
+    };
+    const mission = {
+      level: 1,
+      collected: 0,
+      money: 0,
+      lives: maxLives,
+      levelComplete: false,
+      gameOver: false
+    };
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+    let lastTime = performance.now();
+    let screenShake = 0;
+    let engineShake = 0;
+    let noticeUntil = 0;
+    let renderedLives = -1;
+    let audio;
+    let rocket;
+
+    function canistersForLevel() {
+      return mission.level * 2;
+    }
+
+    function debrisForLevel() {
+      return mission.level < 2 ? 0 : Math.max(1, Math.round(canistersForLevel() * 0.25));
+    }
+
+    function hideLevelComplete() {
+      mission.levelComplete = false;
+      mission.gameOver = false;
+      levelOverlayEl.classList.remove("is-visible");
+      levelOverlayEl.setAttribute("aria-hidden", "true");
+      levelCompletePanelEl.classList.remove("is-hidden");
+      upgradePanelEl.classList.add("is-hidden");
+      gameOverPanelEl.classList.add("is-hidden");
+    }
+
+    function resetUpgrades() {
+      for (const upgrade of Object.values(upgrades)) {
+        upgrade.tier = 0;
+      }
+      applyUpgrades();
+    }
+
+    function applyUpgrades() {
+      world.thrust = baseRocketStats.thrust * (1 + upgrades.thrusters.tier * 0.1);
+      world.turnRate = baseRocketStats.turnRate * (1 + upgrades.steering.tier * 0.12);
+      world.fuelBurn = baseRocketStats.fuelBurn * (1 - upgrades.fuelSaver.tier * 0.15);
+      world.safeLandingSpeed = baseRocketStats.safeLandingSpeed * (1 + upgrades.landingGear.tier * 0.15);
+    }
+
+    function updateLevelCompleteSummary() {
+      levelCompleteTextEl.textContent = `Level ${mission.level} cleared. Level ${mission.level + 1} has ${canistersForLevel() + 2} collectibles.`;
+      levelCompleteMoneyEl.textContent = `${mission.money} SC`;
+      shopMoneyEl.textContent = `${mission.money} SC`;
+    }
+
+    function updateUpgradeShop() {
+      updateLevelCompleteSummary();
+
+      for (const button of upgradeButtons) {
+        const upgrade = upgrades[button.dataset.upgrade];
+        const card = button.closest(".upgrade-card");
+        const tierEl = card.querySelector(".upgrade-tier");
+        const descriptionEl = card.querySelector("p");
+        const costEl = card.querySelector(".upgrade-cost");
+        const nextTier = upgrade.tier + 1;
+        const maxed = upgrade.tier >= upgrade.costs.length;
+        const cost = maxed ? 0 : upgrade.costs[upgrade.tier];
+        const affordable = mission.money >= cost;
+
+        tierEl.textContent = maxed ? "Tier 3 / 3" : `Tier ${upgrade.tier} / 3`;
+        descriptionEl.textContent = maxed
+          ? upgrade.describe(upgrade.tier)
+          : `${upgrade.describe(upgrade.tier)} Next tier: ${upgrade.describe(nextTier)}`;
+        costEl.textContent = maxed ? "Max tier reached" : `Next tier cost: ${cost} SC`;
+        button.disabled = maxed || !affordable;
+        button.textContent = maxed ? "Maxed" : `Buy tier ${nextTier}`;
+      }
+    }
+
+    function showLevelSummaryPanel() {
+      levelCompletePanelEl.classList.remove("is-hidden");
+      upgradePanelEl.classList.add("is-hidden");
+      updateUpgradeShop();
+      buyUpgradesButton.focus();
+    }
+
+    function showUpgradePanel() {
+      levelCompletePanelEl.classList.add("is-hidden");
+      upgradePanelEl.classList.remove("is-hidden");
+      updateUpgradeShop();
+      backToCompleteButton.focus();
+    }
+
+    function showLevelComplete() {
+      mission.levelComplete = true;
+      rocket.fuel = 100;
+      screenShake = 0;
+      engineShake = 0;
+      keys.thrust = false;
+      keys.left = false;
+      keys.right = false;
+      stopEngineSound();
+      updateUpgradeShop();
+      levelOverlayEl.classList.add("is-visible");
+      levelOverlayEl.setAttribute("aria-hidden", "false");
+      nextLevelButton.focus();
+    }
+
+    function showGameOver() {
+      mission.gameOver = true;
+      mission.levelComplete = false;
+      screenShake = 0;
+      engineShake = 0;
+      keys.thrust = false;
+      keys.left = false;
+      keys.right = false;
+      stopEngineSound();
+      gameOverMoneyEl.textContent = `${mission.money} SC`;
+      levelCompletePanelEl.classList.add("is-hidden");
+      upgradePanelEl.classList.add("is-hidden");
+      gameOverPanelEl.classList.remove("is-hidden");
+      levelOverlayEl.classList.add("is-visible");
+      levelOverlayEl.setAttribute("aria-hidden", "false");
+      restartGameButton.focus();
+    }
+
+    function restartGame() {
+      mission.level = 1;
+      mission.collected = 0;
+      mission.money = 0;
+      mission.lives = maxLives;
+      mission.levelComplete = false;
+      mission.gameOver = false;
+      resetUpgrades();
+      startLevel(true);
+    }
+
+    function loseLife() {
+      mission.lives = Math.max(0, mission.lives - 1);
+
+      if (mission.lives <= 0) {
+        statusTitleEl.textContent = "Game over";
+        statusTextEl.textContent = "All rockets were lost.";
+        showGameOver();
+      } else {
+        statusTitleEl.textContent = "Rocket lost";
+        statusTextEl.textContent = `${mission.lives} ${mission.lives === 1 ? "life" : "lives"} remaining. Press R to retry this level.`;
+      }
+    }
+
+    function startLevel(resetFuel = true) {
+      hideLevelComplete();
+      applyUpgrades();
+      mission.collected = 0;
+      rocket = {
+        x: world.launchX,
+        y: world.launchY,
+        vx: 0,
+        vy: 0,
+        angle: -Math.PI / 2,
+        fuel: resetFuel || !rocket ? 100 : rocket.fuel,
+        landed: true,
+        crashed: false,
+        destroyed: false,
+        maxAltitude: 0
+      };
+      particles.length = 0;
+      spawnCans();
+      screenShake = 0;
+      engineShake = 0;
+      noticeUntil = 0;
+      stopEngineSound();
+      statusTitleEl.textContent = "Ready on the pad";
+      statusTextEl.textContent = `Collect ${canistersForLevel()} objects, then land to complete level ${mission.level}.`;
+    }
+
+    function resetRocket() {
+      startLevel(true);
+    }
+
+    function ensureAudio() {
+      if (audio) {
+        if (audio.context.state === "suspended") audio.context.resume();
+        return audio;
+      }
+
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return null;
+
+      const context = new AudioContext();
+      const master = context.createGain();
+      master.gain.value = 0.45;
+      master.connect(context.destination);
+
+      audio = {
+        context,
+        master,
+        engine: null
+      };
+
+      return audio;
+    }
+
+    function createNoiseSource(context, duration) {
+      const length = Math.max(1, Math.floor(context.sampleRate * duration));
+      const buffer = context.createBuffer(1, length, context.sampleRate);
+      const data = buffer.getChannelData(0);
+
+      for (let i = 0; i < length; i += 1) {
+        data[i] = Math.random() * 2 - 1;
+      }
+
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      return source;
+    }
+
+    function createDistortionCurve(amount) {
+      const samples = 256;
+      const curve = new Float32Array(samples);
+      const drive = Math.max(1, amount);
+
+      for (let i = 0; i < samples; i += 1) {
+        const x = (i * 2) / samples - 1;
+        curve[i] = ((3 + drive) * x * 20 * Math.PI / 180) / (Math.PI + drive * Math.abs(x));
+      }
+
+      return curve;
+    }
+
+    function startEngineSound() {
+      const setup = ensureAudio();
+      if (!setup) return;
+
+      if (setup.engine && setup.engine.stopping) {
+        setup.engine = null;
+      }
+
+      if (setup.engine) return;
+
+      const { context, master } = setup;
+      const now = context.currentTime;
+      const engineGain = context.createGain();
+      const lowPass = context.createBiquadFilter();
+      const exhaustFilter = context.createBiquadFilter();
+      const crackleFilter = context.createBiquadFilter();
+      const crackleGain = context.createGain();
+      const saturation = context.createWaveShaper();
+      const rumble = context.createOscillator();
+      const pulse = context.createOscillator();
+      const noise = createNoiseSource(context, 1);
+      const noiseGain = context.createGain();
+
+      rumble.type = "sawtooth";
+      rumble.frequency.value = 52;
+      pulse.type = "triangle";
+      pulse.frequency.value = 28;
+
+      lowPass.type = "lowpass";
+      lowPass.frequency.value = 420;
+      lowPass.Q.value = 2.8;
+
+      exhaustFilter.type = "bandpass";
+      exhaustFilter.frequency.value = 760;
+      exhaustFilter.Q.value = 0.65;
+
+      crackleFilter.type = "highpass";
+      crackleFilter.frequency.value = 1150;
+      crackleFilter.Q.value = 0.9;
+
+      saturation.curve = createDistortionCurve(14);
+      saturation.oversample = "2x";
+
+      engineGain.gain.setValueAtTime(0.001, now);
+      engineGain.gain.exponentialRampToValueAtTime(0.2, now + 0.08);
+      noiseGain.gain.value = 0.22;
+      crackleGain.gain.value = 1;
+
+      rumble.connect(lowPass);
+      pulse.connect(lowPass);
+      noise.connect(noiseGain);
+      noiseGain.connect(exhaustFilter);
+      exhaustFilter.connect(lowPass);
+      lowPass.connect(saturation);
+      crackleGain.connect(crackleFilter);
+      crackleFilter.connect(saturation);
+      saturation.connect(engineGain);
+      engineGain.connect(master);
+
+      rumble.start(now);
+      pulse.start(now);
+      noise.loop = true;
+      noise.start(now);
+
+      setup.engine = {
+        gain: engineGain,
+        lowPass,
+        exhaustFilter,
+        crackleGain,
+        crackleFilter,
+        rumble,
+        pulse,
+        noise,
+        nextCrackleAt: now,
+        stopping: false
+      };
+    }
+
+    function stopEngineSound() {
+      if (!audio || !audio.engine || audio.engine.stopping) return;
+
+      const { context, engine } = audio;
+      const now = context.currentTime;
+      engine.stopping = true;
+      engine.gain.gain.cancelScheduledValues(now);
+      engine.gain.gain.setValueAtTime(Math.max(engine.gain.gain.value, 0.001), now);
+      engine.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+      for (const source of [engine.rumble, engine.pulse, engine.noise]) {
+        source.stop(now + 0.14);
+      }
+
+      setTimeout(() => {
+        if (audio && audio.engine === engine) audio.engine = null;
+      }, 180);
+    }
+
+    function updateEngineSound(firing) {
+      if (firing) {
+        startEngineSound();
+      } else {
+        stopEngineSound();
+      }
+
+      if (!audio || !audio.engine || audio.engine.stopping) return;
+
+      const { context, engine } = audio;
+      const now = context.currentTime;
+      const speed = Math.hypot(rocket.vx, rocket.vy);
+      const throttleWobble = Math.sin(performance.now() * 0.026) * 5;
+      const roughness = 0.5 + Math.random() * 0.5;
+      engine.rumble.frequency.setTargetAtTime(50 + throttleWobble + clamp(speed * 0.015, 0, 8), now, 0.04);
+      engine.pulse.frequency.setTargetAtTime(24 + throttleWobble * 0.4, now, 0.05);
+      engine.lowPass.frequency.setTargetAtTime(390 + roughness * 80 + clamp(speed * 0.35, 0, 170), now, 0.05);
+      engine.exhaustFilter.frequency.setTargetAtTime(690 + roughness * 220, now, 0.045);
+
+      if (now >= engine.nextCrackleAt) {
+        const duration = 0.018 + Math.random() * 0.038;
+        const crackle = createNoiseSource(context, duration);
+        const burstGain = context.createGain();
+        const burstPan = context.createStereoPanner ? context.createStereoPanner() : null;
+        const peak = 0.05 + Math.random() * 0.13;
+
+        burstGain.gain.setValueAtTime(0.001, now);
+        burstGain.gain.exponentialRampToValueAtTime(peak, now + 0.004);
+        burstGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        if (burstPan) {
+          burstPan.pan.value = (Math.random() - 0.5) * 0.55;
+          crackle.connect(burstPan);
+          burstPan.connect(burstGain);
+        } else {
+          crackle.connect(burstGain);
+        }
+
+        burstGain.connect(engine.crackleGain);
+        crackle.start(now);
+        crackle.stop(now + duration + 0.01);
+        engine.nextCrackleAt = now + 0.025 + Math.random() * 0.075;
+      }
+    }
+
+    function playExplosionSound(impactSpeed) {
+      const setup = ensureAudio();
+      if (!setup) return;
+
+      const { context, master } = setup;
+      const now = context.currentTime;
+      const strength = clamp(impactSpeed / 95, 0.85, 1.8);
+      const boom = context.createOscillator();
+      const boomGain = context.createGain();
+      const noise = createNoiseSource(context, 1.1);
+      const noiseGain = context.createGain();
+      const lowPass = context.createBiquadFilter();
+      const highPass = context.createBiquadFilter();
+      const crackle = createNoiseSource(context, 0.32);
+      const crackleGain = context.createGain();
+      const crackleFilter = context.createBiquadFilter();
+
+      stopEngineSound();
+
+      boom.type = "sine";
+      boom.frequency.setValueAtTime(110 * strength, now);
+      boom.frequency.exponentialRampToValueAtTime(28, now + 0.48);
+      boomGain.gain.setValueAtTime(0.58, now);
+      boomGain.gain.exponentialRampToValueAtTime(0.001, now + 0.62);
+
+      lowPass.type = "lowpass";
+      lowPass.frequency.setValueAtTime(1600, now);
+      lowPass.frequency.exponentialRampToValueAtTime(180, now + 0.75);
+      lowPass.Q.value = 0.8;
+
+      highPass.type = "highpass";
+      highPass.frequency.value = 32;
+
+      crackleFilter.type = "bandpass";
+      crackleFilter.frequency.value = 2400;
+      crackleFilter.Q.value = 1.8;
+
+      noiseGain.gain.setValueAtTime(0.46 * strength, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 1.05);
+      crackleGain.gain.setValueAtTime(0.18 * strength, now + 0.03);
+      crackleGain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+
+      boom.connect(boomGain);
+      boomGain.connect(master);
+      noise.connect(highPass);
+      highPass.connect(lowPass);
+      lowPass.connect(noiseGain);
+      noiseGain.connect(master);
+      crackle.connect(crackleFilter);
+      crackleFilter.connect(crackleGain);
+      crackleGain.connect(master);
+
+      boom.start(now);
+      boom.stop(now + 0.65);
+      noise.start(now);
+      noise.stop(now + 1.1);
+      crackle.start(now + 0.03);
+      crackle.stop(now + 0.34);
+    }
+
+    function launchSurfaceY() {
+      return height - world.groundHeight - world.platformTopOffset;
+    }
+
+    function restingRocketY() {
+      return launchSurfaceY() - world.rocketBottomOffset;
+    }
+
+    function visibleWorldBounds() {
+      const scaledWidth = width / world.viewScale;
+      const scaledHeight = height / world.viewScale;
+      return {
+        left: width * 0.5 - scaledWidth * 0.5,
+        right: width * 0.5 + scaledWidth * 0.5,
+        top: height - scaledHeight,
+        bottom: height
+      };
+    }
+
+    function spawnCans() {
+      if (!width || !height) return;
+
+      const bounds = visibleWorldBounds();
+      const groundY = restingRocketY();
+      cans.length = 0;
+
+      const count = canistersForLevel();
+      const debrisCount = debrisForLevel();
+      for (let i = 0; i < count; i += 1) {
+        const band = Math.floor(i / 4);
+        const column = i % 4;
+        const side = column % 2 === 0 ? -1 : 1;
+        const xSpread = 105 + Math.floor(column / 2) * 150 + band * 34;
+        const type = i >= count - debrisCount ? "debris" : "fuel";
+        cans.push({
+          x: clamp(world.launchX + side * xSpread, bounds.left + 70, bounds.right - 70),
+          y: groundY - 130 - band * 125 - Math.random() * 45,
+          radius: 15,
+          type,
+          collected: false,
+          wobble: Math.random() * Math.PI * 2,
+          value: type === "debris" ? debrisValue : fuelCanisterValue
+        });
+      }
+    }
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      world.launchX = width * 0.5;
+      world.launchY = restingRocketY();
+      makeBackdrop();
+
+      if (!rocket) {
+        resetRocket();
+      } else if (rocket.landed && !mission.levelComplete) {
+        rocket.x = world.launchX;
+        rocket.y = world.launchY;
+        spawnCans();
+      }
+    }
+
+    function makeBackdrop() {
+      const bounds = visibleWorldBounds();
+      stars.length = 0;
+      mountains.length = 0;
+
+      for (let i = 0; i < 150; i += 1) {
+        stars.push({
+          x: bounds.left + Math.random() * (bounds.right - bounds.left),
+          y: bounds.top + Math.random() * (bounds.bottom - bounds.top) * 0.68,
+          radius: Math.random() * 1.5 + 0.35,
+          alpha: Math.random() * 0.65 + 0.25
+        });
+      }
+
+      for (let i = 0; i < 15; i += 1) {
+        mountains.push({
+          x: bounds.left + i * ((bounds.right - bounds.left) / 10) - width * 0.25,
+          w: width / 6 + Math.random() * width / 8,
+          h: 48 + Math.random() * 120
+        });
+      }
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function createFlame(dt) {
+      const nozzleX = rocket.x - Math.cos(rocket.angle) * 22;
+      const nozzleY = rocket.y - Math.sin(rocket.angle) * 22;
+      const count = Math.ceil(11 * dt * 60);
+
+      for (let i = 0; i < count; i += 1) {
+        const spread = (Math.random() - 0.5) * 0.72;
+        const force = 80 + Math.random() * 135;
+        particles.push({
+          x: nozzleX,
+          y: nozzleY,
+          vx: -Math.cos(rocket.angle + spread) * force + rocket.vx * 0.2,
+          vy: -Math.sin(rocket.angle + spread) * force + rocket.vy * 0.2,
+          radius: 2.2 + Math.random() * 5.2,
+          life: 0.22 + Math.random() * 0.28,
+          age: 0,
+          hot: Math.random() > 0.35,
+          gravityScale: 0.45,
+          drag: 1
+        });
+      }
+    }
+
+    function createExplosion(impactSpeed) {
+      const baseX = rocket.x;
+      const baseY = launchSurfaceY() - 5;
+      const strength = clamp(impactSpeed / 95, 0.85, 1.8);
+
+      rocket.destroyed = true;
+      playExplosionSound(impactSpeed);
+      screenShake = Math.max(screenShake, 30 * strength);
+
+      particles.push({
+        x: baseX,
+        y: baseY,
+        vx: 0,
+        vy: 0,
+        radius: 34 * strength,
+        life: 0.16,
+        age: 0,
+        color: "rgba(255, 244, 190, 0.95)",
+        gravityScale: 0,
+        drag: 0.96,
+        glow: true
+      });
+
+      for (let i = 0; i < 3; i += 1) {
+        particles.push({
+          x: baseX,
+          y: baseY + 3,
+          vx: 0,
+          vy: 0,
+          radius: (36 + i * 20) * strength,
+          life: 0.28 + i * 0.08,
+          age: -i * 0.035,
+          color: i === 0 ? "rgba(255, 244, 190, 0.95)" : "rgba(255, 130, 58, 0.62)",
+          gravityScale: 0,
+          drag: 1,
+          ring: true,
+          lineWidth: 5 - i
+        });
+      }
+
+      for (let i = 0; i < 18; i += 1) {
+        const angle = -Math.PI * 0.9 + Math.random() * Math.PI * 0.8;
+        const speed = (150 + Math.random() * 280) * strength;
+        particles.push({
+          x: baseX + (Math.random() - 0.5) * 18,
+          y: baseY - 4,
+          vx: Math.cos(angle) * speed * 0.45,
+          vy: Math.sin(angle) * speed - 80,
+          radius: 12 + Math.random() * 20,
+          life: 0.34 + Math.random() * 0.3,
+          age: 0,
+          color: Math.random() > 0.45 ? "#ffcf5a" : "#ff5d2f",
+          gravityScale: 0.28,
+          drag: 0.965,
+          glow: true
+        });
+      }
+
+      for (let i = 0; i < 132; i += 1) {
+        const angle = -Math.PI + Math.random() * Math.PI;
+        const speed = (110 + Math.random() * 430) * strength;
+        const smoke = Math.random() > 0.64;
+        const flame = !smoke && Math.random() > 0.22;
+        particles.push({
+          x: baseX + (Math.random() - 0.5) * 18,
+          y: baseY + (Math.random() - 0.5) * 12,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - Math.random() * 125,
+          radius: smoke ? 12 + Math.random() * 24 : (flame ? 5 + Math.random() * 13 : 2 + Math.random() * 6),
+          life: smoke ? 1 + Math.random() * 1.25 : (flame ? 0.28 + Math.random() * 0.42 : 0.42 + Math.random() * 0.5),
+          age: 0,
+          color: smoke ? (Math.random() > 0.35 ? "rgba(70, 75, 72, 0.72)" : "rgba(36, 42, 42, 0.78)") : (flame ? (Math.random() > 0.42 ? "#ffcf5a" : "#ff5d2f") : "#ffd38a"),
+          gravityScale: smoke ? -0.12 : 0.72,
+          drag: smoke ? 0.988 : 0.946,
+          glow: flame,
+          square: !smoke && !flame && Math.random() > 0.5
+        });
+      }
+
+      const fragments = [
+        { color: "#d8e0df", points: [[0, -17], [9, -4], [-6, -3]], radius: 1.2 },
+        { color: "#8d9a9f", points: [[-10, -8], [2, -7], [-3, 11], [-12, 8]], radius: 1 },
+        { color: "#a3afb2", points: [[8, -6], [13, 8], [3, 14], [1, -4]], radius: 1 },
+        { color: "#2b353b", points: [[-12, 8], [-25, 23], [-7, 18]], radius: 1 },
+        { color: "#2b353b", points: [[12, 8], [25, 23], [7, 18]], radius: 1 },
+        { color: "#17313a", points: [[-6, -5], [6, -5], [6, 6], [-6, 6]], radius: 1 },
+        { color: "#4a555a", points: [[-8, 15], [8, 15], [5, 28], [-5, 28]], radius: 1 }
+      ];
+
+      for (const fragment of fragments) {
+        const angle = -Math.PI + Math.random() * Math.PI;
+        const speed = (90 + Math.random() * 210) * strength;
+        particles.push({
+          x: baseX,
+          y: rocket.y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 90,
+          radius: fragment.radius,
+          life: 1.9 + Math.random() * 0.9,
+          age: 0,
+          color: fragment.color,
+          flameColor: Math.random() > 0.45 ? "#ff7048" : "#ffcf5a",
+          gravityScale: 0.9,
+          drag: 0.985,
+          rotation: Math.random() * Math.PI * 2,
+          angularVelocity: (Math.random() - 0.5) * 10,
+          points: fragment.points
+        });
+      }
+
+      for (let i = 0; i < 42; i += 1) {
+        const angle = -Math.PI + Math.random() * Math.PI;
+        const speed = 120 + Math.random() * 310;
+        particles.push({
+          x: baseX,
+          y: baseY,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 65,
+          radius: 1.5 + Math.random() * 3.5,
+          life: 0.85 + Math.random() * 0.75,
+          age: 0,
+          color: Math.random() > 0.45 ? "#ffd38a" : "#263136",
+          gravityScale: 0.9,
+          drag: 0.972,
+          angularVelocity: (Math.random() - 0.5) * 12,
+          glow: Math.random() > 0.45,
+          square: true
+        });
+      }
+    }
+
+    function update(dt) {
+      if (mission.gameOver) {
+        updateHud();
+        return;
+      }
+
+      if (mission.levelComplete) {
+        updateHud();
+        return;
+      }
+
+      if (!rocket.crashed && keys.left) rocket.angle -= world.turnRate * dt;
+      if (!rocket.crashed && keys.right) rocket.angle += world.turnRate * dt;
+
+      const firing = keys.thrust && rocket.fuel > 0 && !rocket.crashed;
+      if (firing) {
+        rocket.landed = false;
+        rocket.vx += Math.cos(rocket.angle) * world.thrust * dt;
+        rocket.vy += Math.sin(rocket.angle) * world.thrust * dt;
+        rocket.fuel = Math.max(0, rocket.fuel - world.fuelBurn * dt);
+        createFlame(dt);
+      }
+
+      const engineShakeTarget = firing ? (rocket.landed ? 1.8 : 1.25) : 0;
+      const engineShakeSpeed = firing ? 18 : 9;
+      engineShake += (engineShakeTarget - engineShake) * Math.min(1, engineShakeSpeed * dt);
+      updateEngineSound(firing);
+
+      if (!rocket.landed || firing) {
+        rocket.vy += world.gravity * dt;
+        rocket.vx *= Math.pow(world.drag, dt * 60);
+        rocket.vy *= Math.pow(world.drag, dt * 60);
+        rocket.x += rocket.vx * dt;
+        rocket.y += rocket.vy * dt;
+      }
+
+      const bounds = visibleWorldBounds();
+      if (rocket.x < bounds.left - 30) rocket.x = bounds.right + 30;
+      if (rocket.x > bounds.right + 30) rocket.x = bounds.left - 30;
+
+      const groundY = restingRocketY();
+      for (const can of cans) {
+        if (can.collected || rocket.crashed || rocket.destroyed) continue;
+
+        const distance = Math.hypot(rocket.x - can.x, rocket.y - can.y);
+        if (distance < 27) {
+          can.collected = true;
+          mission.collected += 1;
+
+          if (can.type === "debris") {
+            mission.money += can.value;
+            statusTitleEl.textContent = "Debris recovered";
+            statusTextEl.textContent = `+${can.value} SC collected.`;
+          } else {
+            const fuelBeforePickup = rocket.fuel;
+            rocket.fuel = clamp(rocket.fuel + can.value, 0, 100);
+            statusTitleEl.textContent = "Fuel canister secured";
+            statusTextEl.textContent = fuelBeforePickup >= 100
+              ? "Fuel is already full."
+              : `Fuel topped up to ${Math.round(rocket.fuel)}%.`;
+          }
+
+          if (mission.collected >= canistersForLevel()) {
+            statusTextEl.textContent = "All objects collected. Land safely to complete the level.";
+          }
+          noticeUntil = performance.now() + 1200;
+
+          for (let i = 0; i < 10; i += 1) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 35 + Math.random() * 95;
+            particles.push({
+              x: can.x,
+              y: can.y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              radius: 2 + Math.random() * 3,
+              life: 0.35 + Math.random() * 0.25,
+              age: 0,
+              color: can.type === "debris"
+                ? (Math.random() > 0.5 ? "#a9b3b8" : "#64d58b")
+                : (Math.random() > 0.45 ? "#ffcf5a" : "#7ed6e8"),
+              gravityScale: 0.2,
+              drag: 0.96,
+              glow: true
+            });
+          }
+        }
+      }
+
+      if (rocket.y >= groundY) {
+        const impactSpeed = Math.hypot(rocket.vx, rocket.vy);
+        rocket.y = groundY;
+
+        if (rocket.crashed) {
+          statusTitleEl.textContent = "Rocket lost";
+          statusTextEl.textContent = `${mission.lives} ${mission.lives === 1 ? "life" : "lives"} remaining. Press R to retry this level.`;
+        } else if (!rocket.landed && impactSpeed > world.safeLandingSpeed) {
+          rocket.crashed = true;
+          createExplosion(impactSpeed);
+          loseLife();
+        } else {
+          rocket.crashed = false;
+          if (rocket.maxAltitude > 4) {
+            if (mission.collected >= canistersForLevel()) {
+              statusTitleEl.textContent = "Level complete";
+              statusTextEl.textContent = "All objects collected and the rocket is safely back on the pad.";
+              showLevelComplete();
+            } else {
+              statusTitleEl.textContent = "Touchdown";
+              statusTextEl.textContent = `${canistersForLevel() - mission.collected} objects left in this level.`;
+            }
+          } else {
+            statusTitleEl.textContent = "Ready on the pad";
+            statusTextEl.textContent = `Collect ${canistersForLevel()} objects, then land to complete level ${mission.level}.`;
+          }
+        }
+
+        rocket.vx = 0;
+        rocket.vy = 0;
+        rocket.landed = true;
+        rocket.angle = -Math.PI / 2;
+      } else if (performance.now() < noticeUntil) {
+        // Keep short mission notices visible before returning to flight state text.
+      } else if (!firing) {
+        statusTitleEl.textContent = rocket.vy < 0 ? "Coasting upward" : "Falling";
+        statusTextEl.textContent = "Gravity is in charge until you thrust again.";
+      } else {
+        statusTitleEl.textContent = "Powered flight";
+        statusTextEl.textContent = "Rotate into the direction you want to accelerate.";
+      }
+
+      const altitude = Math.max(0, groundY - rocket.y);
+      rocket.maxAltitude = Math.max(rocket.maxAltitude, altitude);
+
+      for (let i = particles.length - 1; i >= 0; i -= 1) {
+        const p = particles[i];
+        p.age += dt;
+        if (p.age < 0) continue;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.rotation = (p.rotation || 0) + (p.angularVelocity || 0) * dt;
+        p.vx *= Math.pow(p.drag || 1, dt * 60);
+        p.vy *= Math.pow(p.drag || 1, dt * 60);
+        p.vy += world.gravity * (p.gravityScale ?? 0.45) * dt;
+        if (p.age >= p.life) particles.splice(i, 1);
+      }
+
+      screenShake = Math.max(0, screenShake - 42 * dt);
+
+      updateHud(altitude);
+    }
+
+    function updateHud(altitude = Math.max(0, restingRocketY() - rocket.y)) {
+      altitudeEl.textContent = `${Math.round(altitude)} m`;
+      verticalSpeedEl.textContent = `${Math.round(-rocket.vy)} m/s`;
+      fuelEl.textContent = `${Math.round(rocket.fuel)}%`;
+      levelEl.textContent = `${mission.level}`;
+      carriedEl.textContent = `${mission.collected}/${canistersForLevel()}`;
+      moneyEl.textContent = `${mission.money} SC`;
+      updateLivesHud();
+      fuelEl.style.color = rocket.fuel < 20 ? "var(--danger)" : "var(--text)";
+    }
+
+    function updateLivesHud() {
+      if (renderedLives === mission.lives) return;
+
+      const icons = [];
+      for (let i = 0; i < mission.lives; i += 1) {
+        const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        const bodyGradientId = `lifeRocketBody${i}`;
+        const windowGradientId = `lifeRocketWindow${i}`;
+        icon.setAttribute("class", "life-rocket");
+        icon.setAttribute("viewBox", "-25 -34 50 64");
+        icon.setAttribute("aria-hidden", "true");
+        icon.innerHTML = `
+          <defs>
+            <linearGradient id="${bodyGradientId}" x1="-15" y1="0" x2="15" y2="0" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#7d8990"></stop>
+              <stop offset="0.2" stop-color="#d8e0df"></stop>
+              <stop offset="0.5" stop-color="#f4f7f3"></stop>
+              <stop offset="0.75" stop-color="#a3afb2"></stop>
+              <stop offset="1" stop-color="#48535a"></stop>
+            </linearGradient>
+            <radialGradient id="${windowGradientId}" cx="-2" cy="-1" r="8" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#d8fbff"></stop>
+              <stop offset="0.52" stop-color="#6fb9ca"></stop>
+              <stop offset="1" stop-color="#17313a"></stop>
+            </radialGradient>
+          </defs>
+          <path d="M0 -31 C12 -22 14 -7 11 21 L-11 21 C-14 -7 -12 -22 0 -31 Z" fill="url(#${bodyGradientId})" stroke="#11191d" stroke-width="2"></path>
+          <path d="M0 -31 C8 -24 10 -17 9 -10 L-9 -10 C-10 -17 -8 -24 0 -31 Z" fill="#eef2ee"></path>
+          <circle cx="0" cy="-1" r="6" fill="url(#${windowGradientId})" stroke="#152327" stroke-width="2"></circle>
+          <path d="M-11 11 L-23 26 L-8 21 Z" fill="#2b353b" stroke="#0e1518" stroke-width="1.6"></path>
+          <path d="M11 11 L23 26 L8 21 Z" fill="#2b353b" stroke="#0e1518" stroke-width="1.6"></path>
+          <rect x="-8" y="18" width="16" height="5" rx="1" fill="#4a555a"></rect>
+        `;
+        icons.push(icon);
+      }
+      livesEl.replaceChildren(...icons);
+      renderedLives = mission.lives;
+    }
+
+    function drawBackdrop() {
+      const bounds = visibleWorldBounds();
+      const sky = ctx.createLinearGradient(0, bounds.top, 0, height);
+      sky.addColorStop(0, "#070b16");
+      sky.addColorStop(0.52, "#122632");
+      sky.addColorStop(1, "#203126");
+      ctx.fillStyle = sky;
+      ctx.fillRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
+
+      for (const star of stars) {
+        ctx.globalAlpha = star.alpha;
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      ctx.fillStyle = "#182927";
+      ctx.beginPath();
+      ctx.moveTo(bounds.left, height - world.groundHeight);
+      for (const peak of mountains) {
+        ctx.lineTo(peak.x + peak.w * 0.5, height - world.groundHeight - peak.h);
+        ctx.lineTo(peak.x + peak.w, height - world.groundHeight);
+      }
+      ctx.lineTo(bounds.right, height - world.groundHeight);
+      ctx.lineTo(bounds.right, height);
+      ctx.lineTo(bounds.left, height);
+      ctx.closePath();
+      ctx.fill();
+
+      const ground = ctx.createLinearGradient(0, height - world.groundHeight, 0, height);
+      ground.addColorStop(0, "#5c5a45");
+      ground.addColorStop(1, "#282f25");
+      ctx.fillStyle = ground;
+      ctx.fillRect(bounds.left, height - world.groundHeight, bounds.right - bounds.left, world.groundHeight);
+
+      ctx.fillStyle = "#323a30";
+      for (let x = bounds.left - 40; x < bounds.right + 80; x += 42) {
+        ctx.fillRect(x, height - world.groundHeight + 14, 26, 3);
+      }
+
+      drawLaunchPad();
+    }
+
+    function drawLaunchPad() {
+      const padY = height - world.groundHeight;
+      const padTopY = launchSurfaceY();
+      ctx.fillStyle = "#1f2424";
+      ctx.fillRect(world.launchX - 70, padY - 8, 140, 10);
+      ctx.fillStyle = "#3d4946";
+      ctx.fillRect(world.launchX - 58, padY - 15, 116, 8);
+      ctx.strokeStyle = "rgba(255, 207, 90, 0.45)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(world.launchX - 58, padTopY);
+      ctx.lineTo(world.launchX + 58, padTopY);
+      ctx.stroke();
+    }
+
+    function drawParticles() {
+      for (const p of particles) {
+        if (p.age < 0) continue;
+
+        const t = 1 - p.age / p.life;
+        ctx.globalAlpha = Math.max(0, t);
+        ctx.fillStyle = p.color || (p.hot ? "#ffcf5a" : "#ff7048");
+
+        if (p.ring) {
+          const ringProgress = 1 - t;
+          const radius = p.radius * (0.25 + ringProgress * 1.75);
+          ctx.globalAlpha = Math.max(0, t * 0.65);
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = Math.max(1, (p.lineWidth || 3) * t);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (p.square) {
+          const size = Math.max(1, p.radius * t);
+          if (p.glow) {
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, t * 0.55);
+            ctx.strokeStyle = "#ff8a3a";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(p.x - p.vx * 0.035, p.y - p.vy * 0.035);
+            ctx.lineTo(p.x, p.y);
+            ctx.stroke();
+            ctx.restore();
+          }
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rotation || ((p.age * 10) + p.vx * 0.01));
+          ctx.fillRect(-size, -size, size * 2, size * 2);
+          ctx.restore();
+        } else if (p.points) {
+          if (p.flameColor && t > 0.35) {
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, (t - 0.35) * 0.8);
+            ctx.fillStyle = p.flameColor;
+            ctx.beginPath();
+            ctx.arc(p.x - p.vx * 0.025, p.y - p.vy * 0.025, 5 * t, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rotation || 0);
+          ctx.scale(t, t);
+          ctx.beginPath();
+          ctx.moveTo(p.points[0][0], p.points[0][1]);
+          for (let i = 1; i < p.points.length; i += 1) {
+            ctx.lineTo(p.points[i][0], p.points[i][1]);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = "rgba(10, 16, 18, 0.85)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          if (p.glow) {
+            const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, Math.max(1, p.radius * t));
+            glow.addColorStop(0, "rgba(255, 244, 190, 0.95)");
+            glow.addColorStop(0.35, p.color || "#ffcf5a");
+            glow.addColorStop(1, "rgba(255, 93, 47, 0)");
+            ctx.fillStyle = glow;
+          }
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius * t, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function drawCan(can) {
+      if (can.collected) return;
+
+      const bob = Math.sin(performance.now() * 0.003 + can.wobble) * 4;
+
+      ctx.save();
+      ctx.translate(can.x, can.y + bob);
+      ctx.rotate(Math.sin(performance.now() * 0.002 + can.wobble) * 0.18);
+
+      if (can.type === "debris") {
+        drawDebris();
+        ctx.restore();
+        return;
+      }
+
+      ctx.fillStyle = "rgba(126, 214, 232, 0.18)";
+      ctx.beginPath();
+      ctx.arc(0, 0, 24, 0, Math.PI * 2);
+      ctx.fill();
+
+      const canGradient = ctx.createLinearGradient(-9, -14, 9, 14);
+      canGradient.addColorStop(0, "#f4fbff");
+      canGradient.addColorStop(0.26, "#b9ddea");
+      canGradient.addColorStop(0.34, "#ffcf5a");
+      canGradient.addColorStop(0.68, "#f26b3a");
+      canGradient.addColorStop(1, "#54201b");
+      ctx.fillStyle = canGradient;
+      ctx.strokeStyle = "#0d1715";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.roundRect(-9, -15, 18, 30, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#152027";
+      ctx.fillRect(-7, -10, 14, 7);
+      ctx.fillStyle = "#ffcf5a";
+      ctx.font = "700 5px ui-sans-serif, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("FUEL", 0, -6.5);
+
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.58)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-5, -12);
+      ctx.lineTo(-5, 12);
+      ctx.stroke();
+
+      ctx.fillStyle = "#91a8ad";
+      ctx.beginPath();
+      ctx.ellipse(0, -15, 8, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(0, 15, 8, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffcf5a";
+      ctx.beginPath();
+      ctx.moveTo(0, -2);
+      ctx.lineTo(5, 4);
+      ctx.lineTo(1, 4);
+      ctx.lineTo(4, 11);
+      ctx.lineTo(-5, 1);
+      ctx.lineTo(-1, 1);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawDebris() {
+      ctx.fillStyle = "rgba(100, 213, 139, 0.16)";
+      ctx.beginPath();
+      ctx.arc(0, 0, 24, 0, Math.PI * 2);
+      ctx.fill();
+
+      const scrapGradient = ctx.createLinearGradient(-13, -13, 14, 14);
+      scrapGradient.addColorStop(0, "#edf3ef");
+      scrapGradient.addColorStop(0.28, "#9da8ad");
+      scrapGradient.addColorStop(0.62, "#526066");
+      scrapGradient.addColorStop(1, "#20292f");
+
+      ctx.fillStyle = scrapGradient;
+      ctx.strokeStyle = "#0d171b";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(-12, -7);
+      ctx.lineTo(-1, -16);
+      ctx.lineTo(13, -9);
+      ctx.lineTo(9, 2);
+      ctx.lineTo(15, 12);
+      ctx.lineTo(1, 15);
+      ctx.lineTo(-10, 8);
+      ctx.lineTo(-16, -1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.38)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-7, -5);
+      ctx.lineTo(5, -9);
+      ctx.lineTo(10, -4);
+      ctx.moveTo(-6, 5);
+      ctx.lineTo(5, 8);
+      ctx.stroke();
+
+      ctx.fillStyle = "#64d58b";
+      ctx.beginPath();
+      ctx.arc(3, 0, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "#0c2217";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    function drawCans() {
+      for (const can of cans) {
+        drawCan(can);
+      }
+    }
+
+    function drawRocket() {
+      if (rocket.destroyed) return;
+
+      ctx.save();
+      ctx.translate(rocket.x, rocket.y);
+      ctx.rotate(rocket.angle + Math.PI / 2);
+
+      if (rocket.crashed) {
+        ctx.rotate(Math.sin(performance.now() * 0.02) * 0.05);
+      }
+
+      const bodyGradient = ctx.createLinearGradient(-15, 0, 15, 0);
+      bodyGradient.addColorStop(0, "#7d8990");
+      bodyGradient.addColorStop(0.18, "#d8e0df");
+      bodyGradient.addColorStop(0.48, "#f4f7f3");
+      bodyGradient.addColorStop(0.74, "#a3afb2");
+      bodyGradient.addColorStop(1, "#48535a");
+
+      ctx.fillStyle = bodyGradient;
+      ctx.strokeStyle = "#11191d";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(0, -31);
+      ctx.bezierCurveTo(12, -22, 14, -7, 11, 21);
+      ctx.lineTo(-11, 21);
+      ctx.bezierCurveTo(-14, -7, -12, -22, 0, -31);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      const noseGradient = ctx.createLinearGradient(-9, -30, 9, -8);
+      noseGradient.addColorStop(0, "#dde5e2");
+      noseGradient.addColorStop(0.5, "#eef2ee");
+      noseGradient.addColorStop(1, "#8d9a9f");
+      ctx.fillStyle = noseGradient;
+      ctx.beginPath();
+      ctx.moveTo(0, -31);
+      ctx.bezierCurveTo(8, -24, 10, -17, 9, -10);
+      ctx.lineTo(-9, -10);
+      ctx.bezierCurveTo(-10, -17, -8, -24, 0, -31);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(17, 25, 29, 0.48)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-10, -10);
+      ctx.lineTo(10, -10);
+      ctx.moveTo(-11, 5);
+      ctx.lineTo(11, 5);
+      ctx.moveTo(-9, 17);
+      ctx.lineTo(9, 17);
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.42)";
+      ctx.beginPath();
+      ctx.moveTo(-5, -18);
+      ctx.bezierCurveTo(-7, -4, -7, 9, -5, 19);
+      ctx.stroke();
+
+      const windowGradient = ctx.createRadialGradient(-2, -1, 1, 0, 0, 7);
+      windowGradient.addColorStop(0, "#d8fbff");
+      windowGradient.addColorStop(0.48, "#6fb9ca");
+      windowGradient.addColorStop(1, "#17313a");
+      ctx.fillStyle = windowGradient;
+      ctx.strokeStyle = "#152327";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, -1, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#2b353b";
+      ctx.strokeStyle = "#0e1518";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(-11, 11);
+      ctx.lineTo(-23, 26);
+      ctx.lineTo(-8, 21);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(11, 11);
+      ctx.lineTo(23, 26);
+      ctx.lineTo(8, 21);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#4a555a";
+      ctx.fillRect(-8, 18, 16, 4);
+
+      const nozzleGradient = ctx.createLinearGradient(-7, 22, 7, 28);
+      nozzleGradient.addColorStop(0, "#11181c");
+      nozzleGradient.addColorStop(0.5, "#5f6b70");
+      nozzleGradient.addColorStop(1, "#11181c");
+      ctx.fillStyle = nozzleGradient;
+      ctx.strokeStyle = "#0b1012";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-7, 22);
+      ctx.lineTo(7, 22);
+      ctx.lineTo(5, 28);
+      ctx.lineTo(-5, 28);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawVelocityVector() {
+      const speed = Math.hypot(rocket.vx, rocket.vy);
+      if (speed < 8) return;
+
+      const scale = clamp(speed * 0.24, 18, 70);
+      const angle = Math.atan2(rocket.vy, rocket.vx);
+      const x2 = rocket.x + Math.cos(angle) * scale;
+      const y2 = rocket.y + Math.sin(angle) * scale;
+
+      ctx.strokeStyle = "rgba(126, 214, 232, 0.72)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(rocket.x, rocket.y);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(126, 214, 232, 0.72)";
+      ctx.beginPath();
+      ctx.arc(x2, y2, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function applyWorldCamera() {
+      ctx.translate(width * 0.5, height);
+      ctx.scale(world.viewScale, world.viewScale);
+      ctx.translate(-width * 0.5, -height);
+    }
+
+    function draw() {
+      ctx.save();
+      const canShakeScene = !mission.levelComplete && !mission.gameOver;
+      if (canShakeScene && screenShake > 0) {
+        ctx.translate((Math.random() - 0.5) * screenShake, (Math.random() - 0.5) * screenShake);
+      }
+      if (canShakeScene && engineShake > 0.02) {
+        const rumble = performance.now() * 0.055;
+        ctx.translate(Math.sin(rumble) * engineShake, Math.cos(rumble * 1.37) * engineShake);
+      }
+      applyWorldCamera();
+      drawBackdrop();
+      drawParticles();
+      drawCans();
+      drawVelocityVector();
+      drawRocket();
+      ctx.restore();
+    }
+
+    function loop(now) {
+      const dt = Math.min((now - lastTime) / 1000, 0.033);
+      lastTime = now;
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    function setKey(event, pressed) {
+      const key = event.key.toLowerCase();
+      if (mission.gameOver) {
+        if (pressed && (key === "enter" || key === "r")) restartGame();
+        return;
+      }
+
+      if (mission.levelComplete) {
+        if (pressed && key === "enter" && !levelCompletePanelEl.classList.contains("is-hidden")) {
+          nextLevelButton.click();
+        }
+        return;
+      }
+      if (key === "w" || key === "arrowup" || key === " ") {
+        if (pressed) ensureAudio();
+        keys.thrust = pressed;
+        event.preventDefault();
+      }
+      if (key === "a" || key === "arrowleft") {
+        keys.left = pressed;
+        event.preventDefault();
+      }
+      if (key === "d" || key === "arrowright") {
+        keys.right = pressed;
+        event.preventDefault();
+      }
+      if (pressed && key === "r") {
+        resetRocket();
+      }
+    }
+
+    nextLevelButton.addEventListener("click", () => {
+      mission.level += 1;
+      startLevel(true);
+    });
+
+    restartGameButton.addEventListener("click", restartGame);
+
+    buyUpgradesButton.addEventListener("click", showUpgradePanel);
+    backToCompleteButton.addEventListener("click", showLevelSummaryPanel);
+
+    for (const button of upgradeButtons) {
+      button.addEventListener("click", () => {
+        const upgrade = upgrades[button.dataset.upgrade];
+        if (!upgrade || upgrade.tier >= upgrade.costs.length) return;
+
+        const cost = upgrade.costs[upgrade.tier];
+        if (mission.money < cost) return;
+
+        mission.money -= cost;
+        upgrade.tier += 1;
+        updateUpgradeShop();
+      });
+    }
+
+    function bindTouchControls() {
+      for (const button of document.querySelectorAll(".touch-controls button")) {
+        const key = button.dataset.key;
+        const press = (event) => {
+          event.preventDefault();
+          ensureAudio();
+          keys[key] = true;
+          button.setPointerCapture(event.pointerId);
+        };
+        const release = (event) => {
+          event.preventDefault();
+          keys[key] = false;
+        };
+
+        button.addEventListener("pointerdown", press);
+        button.addEventListener("pointerup", release);
+        button.addEventListener("pointercancel", release);
+        button.addEventListener("lostpointercapture", () => {
+          keys[key] = false;
+        });
+      }
+    }
+
+    window.addEventListener("resize", resize);
+    window.addEventListener("keydown", (event) => setKey(event, true));
+    window.addEventListener("keyup", (event) => setKey(event, false));
+
+    bindTouchControls();
+    resize();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
